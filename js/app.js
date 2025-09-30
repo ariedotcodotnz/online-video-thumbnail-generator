@@ -3,7 +3,6 @@ var canvas = document.querySelector("#canvas");
 var file = document.querySelector("#videofile");
 var videoControls = document.querySelector("#videoControls");
 var videow = document.querySelector("#videow");
-var snapd = document.querySelector("#snapd");
 var snap = document.querySelector("#snap");
 var snap2 = document.querySelector("#snap2");
 var save = document.querySelector("#save");
@@ -11,11 +10,40 @@ var saveall = document.querySelector("#saveall");
 var clear = document.querySelector("#clear");
 var videoInfo = document.querySelector("#videoInfo");
 var snapSize = document.querySelector("#snapsize");
-var context = canvas.getContext("2d");
+var context = canvas.getContext("2d", { willReadFrequently: true });
 var slider = document.querySelector("#slider");
 var w, h, ratio;
 var snapProc = null;
-//add loadedmetadata which will helps to identify video attributes
+var cancelRequested = false;
+var isProcessing = false;
+
+// Keyboard shortcuts
+document.addEventListener('keydown', function(e) {
+  if (!video || !video.duration) return;
+  
+  // Don't trigger if typing in an input
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  
+  switch(e.key) {
+    case ' ':
+      e.preventDefault();
+      video.paused ? video.play() : video.pause();
+      break;
+    case 's':
+    case 'S':
+      e.preventDefault();
+      if (!snap.disabled) snapPicture();
+      break;
+    case 'ArrowLeft':
+      e.preventDefault();
+      goToTime(video, video.currentTime - 1/30);
+      break;
+    case 'ArrowRight':
+      e.preventDefault();
+      goToTime(video, video.currentTime + 1/30);
+      break;
+  }
+});
 
 function timeUpdate() {
   slider.setAttribute("max", Math.ceil(video.duration));
@@ -29,15 +57,14 @@ function timeUpdate() {
 }
 
 function goToTime(video, time) {
-  console.log('goToTime',time)
   video.currentTime = Math.min(video.duration, Math.max(0, time));
   timeUpdate();
 }
 
 video.addEventListener("timeupdate", timeUpdate);
-setInterval( function () {
-  console.log(video.paused)
-  if (!video) return
+
+setInterval(function () {
+  if (!video) return;
   if (video.paused){
     document.querySelector(".play-control").style.display = "block";
     document.querySelector(".pause-control").style.display = "none";
@@ -45,24 +72,20 @@ setInterval( function () {
     document.querySelector(".play-control").style.display = "none";
     document.querySelector(".pause-control").style.display = "block";
   }
-},1000)
+}, 300);
 
-video.addEventListener(
-  "loadedmetadata",
-  function () {
-    console.log("Metadata loaded");
-    videow.value = video.videoWidth;
-    videoInfo.innerHTML = [
-      "Video size: " + video.videoWidth + "x" + video.videoHeight,
-      "Video length: " + Math.round(video.duration * 10) / 10 + "sec",
-    ].join("<br>");
-    video.objectURL = false;
-    video.play();
-    video.pause();
-    resize();
-  },
-  false
-);
+video.addEventListener("loadedmetadata", function () {
+  console.log("Metadata loaded");
+  videow.value = video.videoWidth;
+  videoInfo.innerHTML = [
+    "Video size: " + video.videoWidth + "x" + video.videoHeight,
+    "Video length: " + Math.round(video.duration * 10) / 10 + "sec",
+  ].join("<br>");
+  video.objectURL = false;
+  video.play();
+  video.pause();
+  resize();
+}, false);
 
 function resize() {
   ratio = video.videoWidth / video.videoHeight;
@@ -75,52 +98,185 @@ function resize() {
 function snapPicture() {
   context.fillRect(0, 0, w, h);
   context.drawImage(video, 0, 0, w, h);
-  var time = video.currentTime
+  var time = video.currentTime;
 
   const container = document.querySelector("#outputs");
   const img = document.createElement("img");
   img.src = canvas.toDataURL();
   img.className = "output";
   img.addEventListener("click", () => selectImage(img));
-  img.title="t"+("000" + time.toFixed(2)).slice(-7)+'seg'
-  img.onclick=function(){ goToTime(video,time) }
+  img.title = "t" + ("000" + time.toFixed(2)).slice(-7) + 'seg';
+  img.onclick = function(){ goToTime(video, time); };
   
   var cont = document.createElement("div");
   cont.className = "output-container";
   cont.style.display = "inline-block";
   cont.appendChild(img);
-  var label=document.createElement("label");
-  label.innerHTML=(time.toFixed(2))+'s '+w+"x"+h
+  
+  var label = document.createElement("label");
+  label.innerHTML = (time.toFixed(2)) + 's ' + w + "x" + h;
   cont.appendChild(label);
 
   var close = document.createElement("a");
   close.className = "output-remove";
-  close.innerHTML = "x";
+  close.innerHTML = "×";
   close.addEventListener("click", function () {
     container.removeChild(cont);
     if (container.children.length == 0) {
       save.disabled = true;
       saveall.disabled = true;
-      clear.disabled = true
+      clear.disabled = true;
     }
-  })
+  });
   cont.appendChild(close);
   
   container.appendChild(cont);
-  img.setAttribute("size",w + "x" + h);
-  selectImage(img)
+  img.setAttribute("size", w + "x" + h);
+  selectImage(img);
 }
+
 function autoSnapPictureAfterSelection(){
-  var sel = document.querySelector('#snap_each')
-  var value = 0
-  if (sel.value.indexOf('%')>0){
-    value = sel.value.replace('%','')*1.0/100
-    autoSnapPictureAfterPercent(value)
+  var sel = document.querySelector('#snap_each');
+  var value = 0;
+  if (sel.value.indexOf('%') > 0){
+    value = sel.value.replace('%', '') * 1.0 / 100;
+    autoSnapPictureOptimized(value, 'percent');
   }
-  if (sel.value.indexOf('m')>0){
-    value = sel.value.replace('m','')*1.0
-    autoSnapPictureAfterMin(value)
+  if (sel.value.indexOf('m') > 0){
+    value = sel.value.replace('m', '') * 1.0;
+    autoSnapPictureOptimized(value * 60, 'seconds');
   }
+}
+
+function showProgress(current, total) {
+  const progressContainer = document.getElementById('progressContainer');
+  const progressBar = document.getElementById('progressBar');
+  const progressText = document.getElementById('progressText');
+  
+  progressContainer.style.display = 'block';
+  const percentage = Math.round((current / total) * 100);
+  progressBar.style.width = percentage + '%';
+  progressText.textContent = `Processing: ${current} of ${total} frames (${percentage}%)`;
+}
+
+function hideProgress() {
+  const progressContainer = document.getElementById('progressContainer');
+  progressContainer.style.display = 'none';
+}
+
+function cancelAutoSnap() {
+  cancelRequested = true;
+  if (snapProc) {
+    clearInterval(snapProc);
+    snapProc = null;
+  }
+}
+
+// Optimized batch processing - MUCH faster
+async function autoSnapPictureOptimized(value, type) {
+  if (!video.duration) {
+    alert("Please load a video first");
+    return;
+  }
+  
+  if (isProcessing) {
+    alert("Already processing. Please wait or cancel.");
+    return;
+  }
+  
+  cancelRequested = false;
+  isProcessing = true;
+  clearSnaps();
+  
+  var duration = video.duration;
+  var times = [];
+  var interval;
+  
+  // Calculate all timestamps
+  if (type === 'percent') {
+    interval = value * duration;
+  } else {
+    interval = value;
+  }
+  
+  var time = 0.1;
+  while (time < duration) {
+    times.push(time);
+    time += interval;
+  }
+  
+  console.log(`Processing ${times.length} frames...`);
+  
+  // Disable buttons during processing
+  snap2.disabled = true;
+  snap.disabled = true;
+  
+  try {
+    for (let i = 0; i < times.length; i++) {
+      if (cancelRequested) {
+        console.log('Processing cancelled by user');
+        break;
+      }
+      
+      showProgress(i + 1, times.length);
+      
+      // Seek and wait for video to be ready
+      await seekAndCapture(times[i]);
+      
+      // Small delay to allow UI updates
+      await sleep(10);
+    }
+  } catch (error) {
+    console.error('Error during processing:', error);
+    alert('Error during processing: ' + error.message);
+  } finally {
+    hideProgress();
+    isProcessing = false;
+    cancelRequested = false;
+    snap2.disabled = false;
+    snap.disabled = false;
+  }
+}
+
+// Promise-based seeking for better control
+function seekAndCapture(time) {
+  return new Promise((resolve, reject) => {
+    let seeked = false;
+    
+    const onSeeked = () => {
+      if (seeked) return;
+      seeked = true;
+      video.removeEventListener('seeked', onSeeked);
+      
+      // Wait a bit for frame to be fully rendered
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          try {
+            snapPicture();
+            resolve();
+          } catch (error) {
+            reject(error);
+          }
+        });
+      });
+    };
+    
+    video.addEventListener('seeked', onSeeked);
+    
+    // Timeout fallback
+    setTimeout(() => {
+      if (!seeked) {
+        video.removeEventListener('seeked', onSeeked);
+        reject(new Error('Seek timeout'));
+      }
+    }, 2000);
+    
+    video.currentTime = time;
+  });
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 function zipAllImages(){
@@ -130,61 +286,12 @@ function zipAllImages(){
   var imgFolder = zip.folder("images");
   images.forEach(function(img){
     var imgData = img.src.replace(/^data:image\/(png|jpg);base64,/, "");
-    imgFolder.file(img.title+".png", imgData, {base64: true});
-  })
+    imgFolder.file(img.title + ".png", imgData, {base64: true});
+  });
   zip.generateAsync({type:"blob"})
   .then(function(content) {
-      console.log('save',content)
       saveAs(content, "images.zip");
   }); 
-}
-
-function autoSnapPictureAfterPercent(percentage) {
-  // Check if video is loaded
-  if (!video.duration) {
-    alert("Please load a video first");
-    return;
-  }
-  clearInterval(snapProc);
-  clearSnaps()
-
-  var duration = video.duration
-  var interval = percentage * duration;
-  var time = 0.1;
-
-  // Loop through the video without delay and take a snapshot every 10% of the video
-  snapProc = setInterval(function () {
-    goToTime(video, time);
-    setTimeout(snapPicture,snapd.value * 1 || 400)
-    time += interval;
-    if (time >= duration) {
-      clearInterval(snapProc);
-    }
-  }, (snapd.value * 1 || 400) + 100);
-}
-
-function autoSnapPictureAfterMin(minutes) {
-  // Check if video is available
-  if (!video.duration) {
-    alert("Please load a video first");
-    return;
-  }
-  clearInterval(snapProc);
-  clearSnaps();
-
-  var duration = video.duration
-  var interval = 60 * minutes;
-  var time = 0.1;
-
-  // Loop through the video without delay and take a snapshot every 1 minute
-  snapProc = setInterval(function () {
-    goToTime(video, time);
-    setTimeout(snapPicture,snapd.value * 1 || 400)
-    time += interval;
-    if (time >= duration) {
-      clearInterval(snapProc);
-    }
-  }, (snapd.value * 1 || 400) + 100);
 }
 
 function clearSnaps(){
@@ -196,7 +303,6 @@ function clearSnaps(){
 }
 
 function selectImage(img) {
-  // Find parent and remove selected class from all children except the selected one
   var parent = img.parentElement.parentElement;
   var images = parent.querySelectorAll('.output-container > img');
   for (let index = 0; index < images.length; index++) {
@@ -207,11 +313,10 @@ function selectImage(img) {
   }
   img.classList.add("selected");
 
-  // Preview the selected image in the image with id "preview"
   var preview = document.querySelector("#preview");
   preview.src = img.src;
   preview.style.display = '';
-  preview.title=img.title
+  preview.title = img.title;
   save.disabled = false;
   saveall.disabled = false;
   clear.disabled = false;
@@ -225,26 +330,10 @@ function loadVideoFile() {
   var fileInput = file.files[0];
   if (fileInput) {
     console.log("Loading...");
-    console.log(fileInput);
-    /*
-    var reader  = new FileReader();
-    reader.addEventListener("error", function () {
-      console.log("Error loading video data");
-    });
-    reader.addEventListener('progress',function(ev){
-      console.log("progress", ev.loaded, ev.total, Math.round(ev.loaded*100.0/ev.total));
-    });
-    reader.addEventListener("load", function () {
-        console.log("Video data loaded");
-        video.preload="metadata";
-        video.src = reader.result;
-      }, false);
-    reader.readAsDataURL(fileInput);
-    */
     if (video.objectURL && video.src) {
       URL.revokeObjectURL(video.src);
     }
-    video.pleload = "metadata";
+    video.preload = "metadata";
     video.objectURL = true;
     video.src = URL.createObjectURL(fileInput);
     videow.removeAttribute("readonly");
@@ -252,20 +341,6 @@ function loadVideoFile() {
     snap2.disabled = false;
     videoControls.style.display = "";
   }
-}
-
-function loadVideoFromFile(file) {
-  let reader = new FileReader();
-  reader.readAsArrayBuffer(file);
-  reader.onload = function (e) {
-    // The file reader gives us an ArrayBuffer:
-    let buffer = e.target.result;
-    // We have to convert the buffer to a blob:
-    let videoBlob = new Blob([new Uint8Array(buffer)], { type: "video/mp4" });
-    // The blob gives us a URL to the video file:
-    let url = window.URL.createObjectURL(videoBlob);
-    video.src = url;
-  };
 }
 
 function loadVideoURL(url) {
@@ -278,21 +353,6 @@ function loadVideoURL(url) {
 }
 
 function savePicture(btn) {
-  // btn.disabled = true
-  // var dataURL = canvas.toDataURL();
-  // var link = document.getElementById("imagelink");
-  // link.style.display = '';
-  // link.style.opacity = 0
-  // link.href = dataURL;
-  // var rnd = Math.round((Math.random() * 10000));
-  // link.setAttribute("download", "video-capture-" + rnd + ".png");
-  // link.click();
-  // setTimeout(function(){
-  //   btn.disabled = false
-  //   link.style.display = 'none';
-  // },100)
-
-  // Save the selected image
   var selected = document.querySelector(".selected");
   if (selected) {
     var dataURL = selected.src;
@@ -301,7 +361,7 @@ function savePicture(btn) {
     link.style.opacity = 0;
     link.href = dataURL;
     var rnd = Math.round(Math.random() * 10000);
-    link.setAttribute("download", "video-capture-" + selected.title+ "-" + rnd + ".png");
+    link.setAttribute("download", "video-capture-" + selected.title + "-" + rnd + ".png");
     link.click();
     setTimeout(function () {
       link.style.display = "none";
@@ -321,7 +381,9 @@ window.addEventListener("load", function () {
         category = "controls";
       }
       var id = name.toLowerCase().replace(" ", "_");
-      gtag("event", category + "-" + id, {});
+      if (typeof gtag !== 'undefined') {
+        gtag("event", category + "-" + id, {});
+      }
     });
   }
 });
