@@ -8,6 +8,7 @@
   <meta name="description" content="Online tool to create snapshots of videos (local file or online by URL)">
   <link rel="stylesheet" href="css/style.css?20250131">
   <link href="https://unpkg.com/material-components-web@latest/dist/material-components-web.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/split.js/1.6.5/split.min.css">
   <script src="https://unpkg.com/material-components-web@latest/dist/material-components-web.min.js"></script>
   <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
   <script>
@@ -33,10 +34,13 @@
       <section class="mdc-top-app-bar__section mdc-top-app-bar__section--align-start">
         <span class="mdc-top-app-bar__title">Online Video Thumbnail Generator</span>
       </section>
+      <section class="mdc-top-app-bar__section mdc-top-app-bar__section--align-end">
+        <span style="color: #fff; font-size: 13px; opacity: 0.9;">↔️ Drag to resize panels</span>
+      </section>
     </div>
   </header>
-  <main class="mdc-top-app-bar--fixed-adjust">
-    <div class="video_data">
+  <main class="mdc-top-app-bar--fixed-adjust split-container">
+    <div class="video_data split">
       <div class="mdc-card mdc-card--outlined">
         <div>
           <div class="mdc-form-field">
@@ -95,51 +99,53 @@
       <div class="mdc-card mdc-card--outlined video-preview">
         <div id="videoInfo" class="mdc-card">
         </div>
-        <video id="video" controls width="640" crossorigin="anonymous">
+        <video id="video" controls crossorigin="anonymous">
           <source src="blank.mp4" type="video/mp4">
         </video>
-        <div>Select the frame to capture using video controls. Keyboard: Space=Play/Pause, S=Snap, ←/→=Frame</div>
+        <div style="font-size: 13px; margin-top: 8px;">
+          <strong>Controls:</strong> Space=Play/Pause • S=Snap • ←/→=Frame
+        </div>
         <div id="videoControls" class="video-controls" style="display:none">
           <div>
             <input id="slider" oninput="goToTime(video,this.value)" onmouseover="this.title=this.value+'seg'"
               type="range" min="0" max="100" value="0" step="0.01" name="position">
           </div>
           <div class="button-container">
-            <button category="controls" onclick="goToTime(video,0)">
+            <button category="controls" onclick="goToTime(video,0)" title="Go to start">
                 <span class="material-icons play-controls">skip_previous</span>
               <br><span>&nbsp;</span></button>
-            <button category="controls" onclick="goToTime(video,video.currentTime-60)">
+            <button category="controls" onclick="goToTime(video,video.currentTime-60)" title="Back 1 minute">
               <span class="material-icons play-controls">fast_rewind</span>
               <br><span>-1m</span></button>
-            <button category="controls" onclick="goToTime(video,video.currentTime-5)">
+            <button category="controls" onclick="goToTime(video,video.currentTime-5)" title="Back 5 seconds">
               <span class="material-icons play-controls">fast_rewind</span>
               <br><span>-5s</span></button>
-            <button category="controls" onclick="goToTime(video,video.currentTime-1)">
+            <button category="controls" onclick="goToTime(video,video.currentTime-1)" title="Back 1 second">
               <span class="material-icons play-controls">fast_rewind</span>
               <br><span>-1s</span></button>
-            <button category="controls" onclick="goToTime(video,video.currentTime-1/30)">
+            <button category="controls" onclick="goToTime(video,video.currentTime-1/30)" title="Back 1 frame">
               <span class="material-icons play-controls">fast_rewind</span>
               <br><span>-1fr</span></button>
             <button category="controls"
-              onclick="video.paused?video.play():video.pause()">
+              onclick="video.paused?video.play():video.pause()" title="Play/Pause (Space)">
               <div>
                 <span class="material-icons play-controls play-control">play_arrow</span>
                 <span class="material-icons play-controls pause-control" style="display: none" >pause</span>
               </div>
               <br><span>&nbsp;</span></button>
-            <button category="controls" onclick="goToTime(video,video.currentTime+1/30)">
+            <button category="controls" onclick="goToTime(video,video.currentTime+1/30)" title="Forward 1 frame">
               <span class="material-icons play-controls">fast_forward</span>
               <br><span>+1fr</span></button>
-            <button category="controls" onclick="goToTime(video,video.currentTime+1)">
+            <button category="controls" onclick="goToTime(video,video.currentTime+1)" title="Forward 1 second">
               <span class="material-icons play-controls">fast_forward</span>
               <br><span>+1s</span></button>
-            <button category="controls" onclick="goToTime(video,video.currentTime+5)">
+            <button category="controls" onclick="goToTime(video,video.currentTime+5)" title="Forward 5 seconds">
               <span class="material-icons play-controls">fast_forward</span>
               <br><span>+5s</span></button>
-            <button category="controls" onclick="goToTime(video,video.currentTime+60)">
+            <button category="controls" onclick="goToTime(video,video.currentTime+60)" title="Forward 1 minute">
               <span class="material-icons play-controls">fast_forward</span>
               <br><span>+1m</span></button>
-            <button category="controls" onclick="goToTime(video,video.duration)">
+            <button category="controls" onclick="goToTime(video,video.duration)" title="Go to end">
               <span class="material-icons play-controls">skip_next</span>
               <br><span>&nbsp;</span></button>
           </div>
@@ -147,14 +153,14 @@
       </div>
     </div>
 
-    <div class="video_output">
+    <div class="video_output split">
       <div class="mdc-card mdc-card--outlined select-source">
         <div>
-          <div style="display: flex; align-items: center; flex-wrap: wrap;">
+          <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 8px;">
             <label class="mdc-text-field mdc-text-field--filled" id="videowidth" >
               <span class="mdc-text-field__ripple"></span>
               <span class="mdc-floating-label" id="size-label">Snap width</span>
-              <input id="videow" type=number size="5" onchange="resize()" value="640" class="mdc-text-field__input"
+              <input id="videow" type=number size="5" onchange="resize()" value="1280" class="mdc-text-field__input"
                 type="text" placeholder="" aria-labelledby="size-label" readonly>
               <span class="mdc-line-ripple"></span>
             </label>
@@ -197,7 +203,7 @@
           </div>
         </div>
         <div class="canvas-container">
-          <canvas id="canvas" width="640" height="480" style="display: none"></canvas>
+          <canvas id="canvas" width="1280" height="720" style="display: none"></canvas>
           <img id="preview" src="blank.png"
             style="display: none; margin-bottom: 1rem; width: 100%; height: auto; max-height: 320px; object-fit: contain;">
           <div id="outputs">
@@ -228,6 +234,7 @@
 
   </main>
 
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/split.js/1.6.5/split.min.js"></script>
   <script src="js/jszip.min.js"></script> 
   <script src="js/filesaver.min.js"></script>
   <script src="js/app.js?20250131"></script>
