@@ -16,13 +16,56 @@ var w, h, ratio;
 var snapProc = null;
 var cancelRequested = false;
 var isProcessing = false;
+var splitInstance = null;
+
+// Initialize Split.js for resizable panels
+window.addEventListener('load', function() {
+  // Check if screen is desktop size
+  if (window.innerWidth > 1023) {
+    splitInstance = Split(['.video_data', '.video_output'], {
+      sizes: [60, 40],
+      minSize: [400, 350],
+      gutterSize: 10,
+      cursor: 'col-resize',
+      snapOffset: 0,
+      onDragEnd: function(sizes) {
+        // Save sizes to localStorage for persistence
+        localStorage.setItem('splitSizes', JSON.stringify(sizes));
+      }
+    });
+    
+    // Restore saved sizes
+    var savedSizes = localStorage.getItem('splitSizes');
+    if (savedSizes) {
+      try {
+        var sizes = JSON.parse(savedSizes);
+        splitInstance.setSizes(sizes);
+      } catch(e) {}
+    }
+  }
+});
+
+// Handle window resize
+window.addEventListener('resize', function() {
+  if (window.innerWidth <= 1023 && splitInstance) {
+    splitInstance.destroy();
+    splitInstance = null;
+  } else if (window.innerWidth > 1023 && !splitInstance) {
+    splitInstance = Split(['.video_data', '.video_output'], {
+      sizes: [60, 40],
+      minSize: [400, 350],
+      gutterSize: 10,
+      cursor: 'col-resize'
+    });
+  }
+});
 
 // Keyboard shortcuts
 document.addEventListener('keydown', function(e) {
   if (!video || !video.duration) return;
   
   // Don't trigger if typing in an input
-  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
   
   switch(e.key) {
     case ' ':
@@ -42,6 +85,14 @@ document.addEventListener('keydown', function(e) {
       e.preventDefault();
       goToTime(video, video.currentTime + 1/30);
       break;
+    case 'ArrowUp':
+      e.preventDefault();
+      goToTime(video, video.currentTime - 5);
+      break;
+    case 'ArrowDown':
+      e.preventDefault();
+      goToTime(video, video.currentTime + 5);
+      break;
   }
 });
 
@@ -50,10 +101,10 @@ function timeUpdate() {
   slider.value = video.currentTime;
   videoInfo.style.display = "block";
   videoInfo.innerHTML = [
-    "Video size: " + video.videoWidth + "x" + video.videoHeight,
-    "Video length: " + Math.round(video.duration * 10) / 10 + "sec",
-    "Playback position: " + Math.round(video.currentTime * 10) / 10 + "sec",
-  ].join("<br>");
+    "<strong>Size:</strong> " + video.videoWidth + "x" + video.videoHeight,
+    "<strong>Duration:</strong> " + Math.round(video.duration * 10) / 10 + "sec",
+    "<strong>Position:</strong> " + Math.round(video.currentTime * 10) / 10 + "sec",
+  ].join(" &nbsp;|&nbsp; ");
 }
 
 function goToTime(video, time) {
@@ -65,22 +116,28 @@ video.addEventListener("timeupdate", timeUpdate);
 
 setInterval(function () {
   if (!video) return;
+  var playControl = document.querySelector(".play-control");
+  var pauseControl = document.querySelector(".pause-control");
+  if (!playControl || !pauseControl) return;
+  
   if (video.paused){
-    document.querySelector(".play-control").style.display = "block";
-    document.querySelector(".pause-control").style.display = "none";
+    playControl.style.display = "block";
+    pauseControl.style.display = "none";
   } else {
-    document.querySelector(".play-control").style.display = "none";
-    document.querySelector(".pause-control").style.display = "block";
+    playControl.style.display = "none";
+    pauseControl.style.display = "block";
   }
 }, 300);
 
 video.addEventListener("loadedmetadata", function () {
   console.log("Metadata loaded");
-  videow.value = video.videoWidth;
+  // Set default output width to video width or 1280, whichever is smaller
+  var defaultWidth = Math.min(video.videoWidth, 1280);
+  videow.value = defaultWidth;
   videoInfo.innerHTML = [
-    "Video size: " + video.videoWidth + "x" + video.videoHeight,
-    "Video length: " + Math.round(video.duration * 10) / 10 + "sec",
-  ].join("<br>");
+    "<strong>Size:</strong> " + video.videoWidth + "x" + video.videoHeight,
+    "<strong>Duration:</strong> " + Math.round(video.duration * 10) / 10 + "sec",
+  ].join(" &nbsp;|&nbsp; ");
   video.objectURL = false;
   video.play();
   video.pause();
@@ -102,7 +159,7 @@ function snapPicture() {
 
   const container = document.querySelector("#outputs");
   const img = document.createElement("img");
-  img.src = canvas.toDataURL();
+  img.src = canvas.toDataURL("image/png", 1.0);
   img.className = "output";
   img.addEventListener("click", () => selectImage(img));
   img.title = "t" + ("000" + time.toFixed(2)).slice(-7) + 'seg';
@@ -117,9 +174,10 @@ function snapPicture() {
   label.innerHTML = (time.toFixed(2)) + 's ' + w + "x" + h;
   cont.appendChild(label);
 
-  var close = document.createElement("a");
+  var close = document.createElement("button");
   close.className = "output-remove";
   close.innerHTML = "×";
+  close.title = "Remove";
   close.addEventListener("click", function () {
     container.removeChild(cont);
     if (container.children.length == 0) {
@@ -283,14 +341,26 @@ function zipAllImages(){
   var zip = new JSZip();
   const container = document.querySelector("#outputs");
   var images = container.querySelectorAll("img");
+  
+  if (images.length === 0) {
+    alert("No images to save");
+    return;
+  }
+  
   var imgFolder = zip.folder("images");
   images.forEach(function(img){
     var imgData = img.src.replace(/^data:image\/(png|jpg);base64,/, "");
     imgFolder.file(img.title + ".png", imgData, {base64: true});
   });
+  
+  saveall.disabled = true;
+  saveall.querySelector('.save_txt').textContent = "Zipping...";
+  
   zip.generateAsync({type:"blob"})
   .then(function(content) {
-      saveAs(content, "images.zip");
+      saveAs(content, "video-thumbnails-" + Date.now() + ".zip");
+      saveall.disabled = false;
+      saveall.querySelector('.save_txt').textContent = "Save All";
   }); 
 }
 
@@ -300,6 +370,9 @@ function clearSnaps(){
   save.disabled = true;
   saveall.disabled = true;
   clear.disabled = true;
+  
+  var preview = document.querySelector("#preview");
+  preview.style.display = "none";
 }
 
 function selectImage(img) {
@@ -329,7 +402,7 @@ function selectVideo() {
 function loadVideoFile() {
   var fileInput = file.files[0];
   if (fileInput) {
-    console.log("Loading...");
+    console.log("Loading video file...");
     if (video.objectURL && video.src) {
       URL.revokeObjectURL(video.src);
     }
@@ -344,6 +417,11 @@ function loadVideoFile() {
 }
 
 function loadVideoURL(url) {
+  if (!url || url.trim() === '') {
+    alert("Please enter a valid video URL");
+    return;
+  }
+  console.log("Loading video from URL...");
   video.preload = "metadata";
   video.src = url;
   videow.removeAttribute("readonly");
