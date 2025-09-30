@@ -1,30 +1,17 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="X-UA-Compatible" content="ie=edge">
   <title>Online Video Thumbnail Generator</title>
   <meta name="description" content="Online tool to create snapshots of videos (local file or online by URL)">
-  <link rel="stylesheet" href="css/style.css?20250130">
-  <style>
-
-  </style>
-  <!-- Global site tag (gtag.js) - Google Analytics -->
-  <script async src="https://www.googletagmanager.com/gtag/js?id=G-RKLKKLZFDQ"></script>
-  <script>
-    window.dataLayer = window.dataLayer || [];
-    function gtag() { dataLayer.push(arguments); }
-    gtag('js', new Date());
-    gtag('config', 'G-RKLKKLZFDQ');
-  </script>
+  <link rel="stylesheet" href="css/style.css?20250131">
   <link href="https://unpkg.com/material-components-web@latest/dist/material-components-web.min.css" rel="stylesheet">
   <script src="https://unpkg.com/material-components-web@latest/dist/material-components-web.min.js"></script>
   <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
   <script>
     function showInput(id, opt) {
-      console.log(opt)
       document.getElementById('select-file').style.display = 'none';
       document.getElementById('select-url').style.display = 'none';
       document.getElementById(id).style.display = '';
@@ -44,17 +31,8 @@
   <header class="mdc-top-app-bar">
     <div class="mdc-top-app-bar__row">
       <section class="mdc-top-app-bar__section mdc-top-app-bar__section--align-start">
-        <!--<button class="material-icons mdc-top-app-bar__navigation-icon mdc-icon-button" aria-label="Open navigation menu">menu</button>-->
         <span class="mdc-top-app-bar__title">Online Video Thumbnail Generator</span>
       </section>
-      <!-- <section class="mdc-top-app-bar__section mdc-top-app-bar__section--align-end" role="toolbar">
-        <a class="toolbar-menu" target="_blank" href="https://forms.gle/AkvW2rRQsTfobxFE8"
-          title="Feedback and feature requests">Feedback</a>
-        &nbsp;
-        <button onclick="document.location='https://github.com/fraigo/online-video-thumbnail-generator'"
-          class="material-icons mdc-top-app-bar__action-item mdc-icon-button" aria-label="Options">
-          <img src="https://github.com/fluidicon.png" width="48"></button>
-      </section> -->
     </div>
   </header>
   <main class="mdc-top-app-bar--fixed-adjust">
@@ -94,7 +72,7 @@
       <br />
       <div class="mdc-card mdc-card--outlined select-source">
         <div id="select-file">
-          <input type="file" class="mdc-text-field__input" id="videofile" accept=".mp4" onchange="loadVideoFile()">
+          <input type="file" class="mdc-text-field__input" id="videofile" accept="video/*" onchange="loadVideoFile()">
         </div>
         <div id="select-url" style="display:none">
           <label class="mdc-text-field mdc-text-field--filled">
@@ -112,13 +90,6 @@
               <span class="mdc-button__label">Load video</span>
             </button>
           </div>
-          <div class="instructions mdc-form-field">
-            For youtube URLs, you can use a service to convert Youtube videos to MP4 files (Google for "Youtube mp4").
-            <ul>
-              <li>Use the provided "Download link" URL here, or </li>
-              <li>Download the file to your device and select "Video from file"</li>
-            </ul>
-          </div>
         </div>
       </div>
       <div class="mdc-card mdc-card--outlined video-preview">
@@ -127,11 +98,11 @@
         <video id="video" controls width="640" crossorigin="anonymous">
           <source src="blank.mp4" type="video/mp4">
         </video>
-        <div>Select the frame to capture using video controls.</div>
+        <div>Select the frame to capture using video controls. Keyboard: Space=Play/Pause, S=Snap, ←/→=Frame</div>
         <div id="videoControls" class="video-controls" style="display:none">
           <div>
             <input id="slider" oninput="goToTime(video,this.value)" onmouseover="this.title=this.value+'seg'"
-              type="range" min="0" max="100" value="0" name="position">
+              type="range" min="0" max="100" value="0" step="0.01" name="position">
           </div>
           <div class="button-container">
             <button category="controls" onclick="goToTime(video,0)">
@@ -146,7 +117,7 @@
             <button category="controls" onclick="goToTime(video,video.currentTime-1)">
               <span class="material-icons play-controls">fast_rewind</span>
               <br><span>-1s</span></button>
-            <button category="controls" onclick="goToTime(video,video.currentTime-1/25)">
+            <button category="controls" onclick="goToTime(video,video.currentTime-1/30)">
               <span class="material-icons play-controls">fast_rewind</span>
               <br><span>-1fr</span></button>
             <button category="controls"
@@ -156,7 +127,7 @@
                 <span class="material-icons play-controls pause-control" style="display: none" >pause</span>
               </div>
               <br><span>&nbsp;</span></button>
-            <button category="controls" onclick="goToTime(video,video.currentTime+1/25)">
+            <button category="controls" onclick="goToTime(video,video.currentTime+1/30)">
               <span class="material-icons play-controls">fast_forward</span>
               <br><span>+1fr</span></button>
             <button category="controls" onclick="goToTime(video,video.currentTime+1)">
@@ -200,6 +171,8 @@
                 <span class="mdc-button__label">Auto snap each</span>
               </button>
               <select id="snap_each">
+                <option value="0.5%">0.5% (200 img)</option>
+                <option value="1%">1% (100 img)</option>
                 <option value="2%">2% (50 img)</option>
                 <option value="4%" selected>4% (25 img)</option>
                 <option value="5%">5% (20 img)</option>
@@ -212,13 +185,15 @@
                 <option value="1m">1 minute</option>
               </select>
             </div>
-            <label class="mdc-text-field mdc-text-field--filled" id="snapdelay" >
-              <span class="mdc-text-field__ripple"></span>
-              <span class="mdc-floating-label" id="size-label">Snap delay</span>
-              <input id="snapd" type=number size="5" onchange="resize()" value="400" class="mdc-text-field__input"
-                type="text" placeholder="" aria-labelledby="size-label" >
-              <span class="mdc-line-ripple"></span>
-            </label>
+          </div>
+          <div id="progressContainer" class="progress-container" style="display:none">
+            <div class="progress-bar">
+              <div id="progressBar" class="progress-fill"></div>
+            </div>
+            <div id="progressText" class="progress-text">Processing...</div>
+            <button id="cancelBtn" class="mdc-button mdc-button--raised" onclick="cancelAutoSnap()" style="margin-top:8px">
+              <span class="mdc-button__label">Cancel</span>
+            </button>
           </div>
         </div>
         <div class="canvas-container">
@@ -253,11 +228,9 @@
 
   </main>
 
-  <!-- start the script ... within that declare variables as follows... -->
   <script src="js/jszip.min.js"></script> 
   <script src="js/filesaver.min.js"></script>
-  <script src="js/app.js?20250130"></script>
+  <script src="js/app.js?20250131"></script>
 
 </body>
-
 </html>
